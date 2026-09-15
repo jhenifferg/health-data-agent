@@ -1,101 +1,225 @@
 # Health Data Agent
 
-Aplicação web para carregar arquivos CSV ou ZIP, explorar metadados e consultar dados em linguagem natural com apoio de IA. O projeto combina uma API FastAPI, uma interface React e um agente que transforma perguntas em operações estruturadas sobre os dados.
+> Natural-language analytics for healthcare and biomedical CSV datasets.
 
-## Funcionalidades
+Health Data Agent is a web application that allows users to upload healthcare or biomedical datasets and explore them using natural-language questions.
 
-- Upload e validação de arquivos CSV e ZIP
-- Detecção de encoding e normalização de colunas
-- Geração de metadados e dicionário de dados
-- Consultas em linguagem natural sobre um dataset
-- Workspaces para consultar vários datasets em conjunto
-- Operações de filtro, contagem, agregação, ordenação e valores distintos
-- Suporte aos provedores Gemini e Groq
-- Tratamento de limites, indisponibilidade e cooldown dos provedores
-- API documentada automaticamente pelo FastAPI
+Instead of asking the language model to calculate answers directly, the application uses AI to **interpret the user's intent and generate a structured query**. The validated query is then executed deterministically with Pandas.
 
-## Tecnologias
+**LLM interprets → Pipeline validates → Pandas executes → Frontend visualizes**
 
-**Backend:** Python, FastAPI, Pandas, Pydantic, LangChain, Gemini e Groq  
-**Frontend:** React 19, Vite e Oxlint  
-**Testes:** Pytest e HTTPX
+This architecture separates natural-language reasoning from data computation and reduces the risk of generating answers that are not supported by the uploaded data.
 
-## Estrutura do projeto
+## Why this project?
+
+Healthcare datasets are often distributed across multiple CSV files and require technical knowledge to explore, filter and combine.
+
+Health Data Agent was developed as an experiment in making structured health data easier to explore while preserving an important principle:
+
+> The AI should interpret the question, but the answer should come from the data.
+
+The system therefore does not act as a diagnostic model and does not rely on built-in medical knowledge to answer dataset questions.
+
+## Features
+
+- Upload individual CSV files or ZIP packages containing multiple CSVs
+- Automatic CSV validation and normalization
+- Encoding and separator handling
+- Dataset metadata and data dictionary generation
+- Natural-language queries
+- Structured filters and multiple-filter queries
+- Counts and distinct counts
+- Aggregations (`sum`, `avg`, `count`, `min`, `max`)
+- Grouping and sorting
+- Cross-dataset joins
+- Tabular query results
+- Automatic bar charts for compatible aggregations
+- Gemini as primary AI provider with Groq fallback
+- Provider timeout, rate-limit and cooldown handling
+- FastAPI REST API
+- React web interface
+
+## Architecture
+
+```text
+                 ┌─────────────────────┐
+                 │   CSV / ZIP Upload  │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ Validation &        │
+                 │ Normalization       │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ DataManager         │
+                 │ + Metadata          │
+                 └──────────┬──────────┘
+                            │
+          Natural-language question
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ LLM Planner         │
+                 │ Gemini / Groq       │
+                 └──────────┬──────────┘
+                            │
+                     Structured query
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ Validation Layer    │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ Pandas Execution    │
+                 │ filters / joins /   │
+                 │ aggregations        │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ React UI            │
+                 │ answer + table +    │
+                 │ visualization       │
+                 └─────────────────────┘
+```
+
+The LLM does not directly calculate statistics from the dataset. It produces a structured `DataQuery`, which is validated before the data-processing layer executes it.
+
+## Example
+
+The application was tested with a multi-file synthetic healthcare dataset containing patients, conditions, encounters, medications, observations and procedures.
+
+Example questions include:
+
+```text
+How many patients are in the dataset?
+
+What are the 5 most frequent conditions?
+
+How many female patients have diabetes?
+```
+
+A grouped query such as:
+
+```text
+What are the 5 most frequent conditions?
+```
+
+can produce both a deterministic table and an automatic visualization.
+
+The project is dataset-driven: answers are generated only when the required information is available in the uploaded files.
+
+## Tech Stack
+
+### Backend
+
+- Python
+- FastAPI
+- Pandas
+- NumPy
+- Pydantic
+- LangChain
+- Google Gemini
+- Groq
+
+### Frontend
+
+- React 19
+- Vite
+- Recharts
+- Oxlint
+
+### Testing
+
+- Pytest
+- HTTPX
+
+## Project Structure
 
 ```text
 health-data-agent/
-├── agents/        # Configuração do agente e prompts
-├── api/           # Aplicação, rotas e schemas FastAPI
-├── frontend/      # Interface React/Vite
-├── pipeline/      # Leitura, validação e preparação dos dados
-├── services/      # Regras de negócio, sessões e provedores
-├── tests/         # Testes automatizados
-├── tools/         # Ferramentas de consulta e manipulação de CSV
-├── app.py         # Entrada do backend
+├── agents/          # LLM configuration and planner prompts
+├── api/             # FastAPI routes and schemas
+├── frontend/        # React/Vite interface
+├── pipeline/        # Loading, validation and data preparation
+├── services/        # Query orchestration and provider handling
+├── tests/           # Automated tests
+├── tools/           # Structured data-query tools
+├── app.py           # Backend entry point
 └── requirements.txt
 ```
 
-## Pré-requisitos
+## Getting Started
 
-- Python 3.10 ou superior
-- Node.js 20 ou superior
-- Uma chave de API do Google Gemini ou da Groq
+### Requirements
 
-## Configuração do backend
+- Python 3.10+
+- Node.js 20+
+- Gemini and/or Groq API key
 
-Clone o repositório e entre na pasta do projeto:
+Clone the repository:
 
 ```bash
 git clone https://github.com/jhenifferg/health-data-agent.git
 cd health-data-agent
 ```
 
-Crie e ative um ambiente virtual:
+### Backend
+
+Create a virtual environment:
 
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-No Windows, use:
+Windows:
 
 ```powershell
 venv\Scripts\activate
 ```
 
-Instale as dependências:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Crie um arquivo `.env` na raiz. Escolha um dos provedores:
+Create a `.env` file in the project root.
+
+Example using Gemini:
 
 ```env
-# Gemini
 AI_PROVIDER=gemini
-GOOGLE_API_KEY=sua_chave_aqui
+GOOGLE_API_KEY=your_api_key
 GEMINI_MODEL=gemini-flash-latest
-
-# Ou Groq
-# AI_PROVIDER=groq
-# GROQ_API_KEY=sua_chave_aqui
-# GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-O arquivo `.env` está ignorado pelo Git e não deve ser publicado.
+Optional Groq fallback:
 
-Inicie a API:
+```env
+GROQ_API_KEY=your_api_key
+GROQ_MODEL=openai/gpt-oss-20b
+```
+
+Never commit API keys or the `.env` file.
+
+Start the API:
 
 ```bash
 python app.py
 ```
 
-A API ficará disponível em `http://127.0.0.1:8000`. A documentação interativa pode ser acessada em `http://127.0.0.1:8000/docs`.
+The backend runs locally on port `8000`. Interactive API documentation is available through FastAPI at `/docs`.
 
-## Configuração do frontend
+### Frontend
 
-Em outro terminal:
+Open another terminal:
 
 ```bash
 cd frontend
@@ -103,43 +227,31 @@ npm install
 npm run dev
 ```
 
-A interface ficará disponível em `http://localhost:5173` e se comunica com a API local na porta `8000`.
+The development interface runs locally on port `5173`.
 
-## Uso
+## API
 
-1. Abra a interface web.
-2. Envie um arquivo CSV ou um ZIP contendo arquivos CSV.
-3. Confira o resumo do dataset carregado.
-4. Faça perguntas em linguagem natural, por exemplo:
-   - `Quantos registros existem?`
-   - `Quais são os valores únicos da coluna sexo?`
-   - `Qual é a média de idade por diagnóstico?`
+Main endpoints:
 
-Os arquivos processados ficam na pasta local `.runtime/`, que também está fora do controle de versão.
-
-## Endpoints principais
-
-| Método | Endpoint | Descrição |
+| Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | Verifica o estado da API |
-| `POST` | `/api/datasets` | Envia um CSV ou ZIP |
-| `GET` | `/api/datasets/{dataset_id}` | Consulta metadados do dataset |
-| `POST` | `/api/datasets/{dataset_id}/query` | Faz uma pergunta sobre um dataset |
-| `POST` | `/api/workspaces` | Cria um workspace |
-| `GET` | `/api/workspaces/{workspace_id}` | Consulta um workspace |
-| `POST` | `/api/workspaces/{workspace_id}/datasets/{dataset_id}` | Adiciona um dataset |
-| `DELETE` | `/api/workspaces/{workspace_id}/datasets/{dataset_id}` | Remove um dataset |
-| `POST` | `/api/workspaces/{workspace_id}/query` | Consulta os datasets do workspace |
+| `GET` | `/api/health` | API health check |
+| `POST` | `/api/datasets` | Upload CSV/ZIP |
+| `GET` | `/api/datasets/{dataset_id}` | Dataset metadata |
+| `POST` | `/api/datasets/{dataset_id}/query` | Query a dataset |
+| `POST` | `/api/workspaces` | Create a workspace |
+| `GET` | `/api/workspaces/{workspace_id}` | Workspace metadata |
+| `POST` | `/api/workspaces/{workspace_id}/query` | Query a workspace |
 
-## Testes e qualidade
+## Tests
 
-Execute os testes do backend:
+Backend:
 
 ```bash
-pytest
+python -m pytest -q
 ```
 
-No frontend, verifique o código e gere uma versão de produção com:
+Frontend:
 
 ```bash
 cd frontend
@@ -147,12 +259,25 @@ npm run lint
 npm run build
 ```
 
-## Segurança
+Current automated backend test suite covers deterministic healthcare queries including filtering and distinct-patient counting.
 
-- Nunca publique o arquivo `.env` ou chaves de API.
-- Valide os dados antes de utilizá-los em ambientes sensíveis.
-- Dados enviados são armazenados apenas no diretório de runtime local configurado para a aplicação.
+## Data & Privacy
 
-## Status
+Uploaded files are processed locally by the application and runtime files are excluded from version control.
 
-Projeto em desenvolvimento.
+The project is designed for **data exploration and educational purposes**. It is not a medical device and should not be used for diagnosis, treatment decisions or other clinical decision-making.
+
+Do not upload identifiable or sensitive patient information unless the deployment environment has been appropriately designed to handle it.
+
+## Current Status
+
+Functional MVP.
+
+Implemented flow:
+
+```text
+Upload → metadata → natural-language question → structured query
+→ deterministic execution → answer → table / visualization
+```
+
+Future improvements may include broader automated test coverage, persistent dataset sessions, richer relationship discovery and additional visualization types.
