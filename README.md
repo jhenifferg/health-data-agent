@@ -2,6 +2,8 @@
 
 > Natural-language analytics for healthcare and biomedical CSV datasets.
 
+**Live demo:** [health-data-agent.onrender.com](https://health-data-agent.onrender.com/)
+
 Health Data Agent is a web application that allows users to upload healthcare or biomedical datasets and explore them using natural-language questions.
 
 Instead of asking the language model to calculate answers directly, the application uses AI to **interpret the user's intent and generate a structured query**. The validated query is then executed deterministically with Pandas.
