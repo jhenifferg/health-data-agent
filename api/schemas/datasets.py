@@ -57,8 +57,15 @@ class TableData(BaseModel):
     truncated: bool = False
     returnedRows: int
 
+class AggregateData(BaseModel):
+    type: Literal["aggregate"]
+    columns: list[str]
+    rows: list[dict]
+    truncated: bool
+    returnedRows: int
 
-DataPayload = Annotated[Union[CountData, TableData], Field(discriminator="type")]
+
+DataPayload = Annotated[Union[CountData, TableData, AggregateData], Field(discriminator="type")]
 
 
 class QueryResponse(BaseModel):

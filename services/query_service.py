@@ -329,20 +329,41 @@ class QueryService:
                         raise provider_error from error
                     raise
                 plan = self._structured_plan(response)
+
                 if plan is not None:
+                    logger.info(
+                        "planner raw dataset_id=%s plan=%s",
+                        dataset_id,
+                        plan.model_dump(),
+                    )
+
                     plan = self._normalize_plan(plan, question, manager)
+
+                    logger.info(
+                        "planner normalized dataset_id=%s plan=%s",
+                        dataset_id,
+                        plan.model_dump(),
+                    )
+
                     tool = tool_map.get("query_data")
                     if tool is None:
                         raise UnknownToolError("Ferramenta desconhecida: query_data")
                     try:
                         result = tool.invoke(plan.model_dump())
                     except Exception as error:
+                        logger.warning(
+                            "query execution failed dataset_id=%s plan=%s error=%s",
+                            dataset_id,
+                            plan.model_dump(),
+                            error,
+                        )
+
                         raise QueryInvalidError(
-                            "O planner produziu uma DataQuery invalida"
+                            f"O planner produziu uma DataQuery inválida: {error}"
                         ) from error
                     telemetry["tools_called"].append("query_data")
                     return QueryResult(
-                        answer=self._answer_from_result(result),
+                        answer=self._answer_from_result(result, question),
                         data=self._result_as_data(result),
                         telemetry=telemetry,
                     )
@@ -386,8 +407,63 @@ class QueryService:
                             )
                             continue
                     logger.info("agent tool=%s dataset_id=%s", tool_name, dataset_id)
+
+                    if tool_name == "query_data":
+                        tool_args = tool_call.get("args", {})
+
+                        if not tool_args.get("dataset"):
+                            candidate_columns = {
+                                tool_args.get("metric"),
+                                tool_args.get("group_by"),
+                                tool_args.get("distinct_column"),
+                                tool_args.get("filter_column"),
+                            }
+
+                            for item in tool_args.get("filters") or []:
+                                candidate_columns.add(item.get("column"))
+
+                            candidate_columns = {
+                                column
+                                for column in candidate_columns
+                                if column
+                            }
+
+                            matching_datasets = []
+
+                            for dataset_name, df in manager.datasets.items():
+                                dataset_columns = set(df.columns)
+
+                                if candidate_columns and candidate_columns.issubset(dataset_columns):
+                                    matching_datasets.append(dataset_name)
+
+                            if len(matching_datasets) == 1:
+                                tool_args["dataset"] = matching_datasets[0]
+
+                            elif len(matching_datasets) == 0:
+                                if len(manager.datasets) == 1:
+                                    tool_args["dataset"] = next(iter(manager.datasets))
+                                else:
+                                    raise ValueError(
+                                        "Não foi possível determinar qual dataset deve ser usado."
+                                    )
+
+                            else:
+                                raise ValueError(
+                                    f"A consulta é ambígua entre os datasets: {matching_datasets}"
+                                )
+
+                    else:
+                        tool_args = tool_call.get("args", {})
+
+                    logger.info(
+                        "tool call dataset_id=%s tool=%s args=%s",
+                        dataset_id,
+                        tool_name,
+                        tool_args,
+                    )
+
                     try:
-                        result = tool_map[tool_name].invoke(tool_call.get("args", {}))
+                        result = tool_map[tool_name].invoke(tool_args)
                     except Exception as error:
                         logger.warning(
                             "agent tool failed tool=%s args=%s error=%s",
@@ -407,7 +483,7 @@ class QueryService:
                             result.get("returned_rows") if isinstance(result, dict) else None,
                         )
                         return QueryResult(
-                            answer=self._answer_from_result(result),
+                            answer=self._answer_from_result(result, question),
                             data=self._result_as_data(last_tool_result),
                             telemetry=telemetry,
                         )
@@ -911,17 +987,47 @@ class QueryService:
                 provider=provider,
                 metadata={**budget, "provider_rate_limit_source": "local_budget"},
             )
-        reservation_id = self.provider_health.reserve(provider, estimated_tokens, model)
+        ########
+
+        reservation_id = self.provider_health.reserve(
+            provider,
+            estimated_tokens,
+            model,
+        )
+
+        if reservation_id is None and estimated_tokens:
+            logger.info(
+                "local token estimate exceeds known budget; retrying reservation "
+                "without estimated token reservation provider=%s query_id=%s",
+                provider,
+                query_id,
+            )
+
+            reservation_id = self.provider_health.reserve(
+                provider,
+                0,
+                model,
+            )
+
         if reservation_id is None:
             self._log_budget_block(query_id, provider, budget)
             raise ProviderRateLimitError(
-                "A consulta nao cabe no budget conhecido do provedor.",
+                "Limite conhecido do provedor atingido.",
                 provider=provider,
-                metadata={**budget, "provider_rate_limit_source": "local_budget"},
+                metadata={
+                    **budget,
+                    "provider_rate_limit_source": "local_budget",
+                },
                 retry_after_seconds=self._retry_after_seconds(
-                    {"x-ratelimit-reset-tokens": str(budget.get("token_reset") or "")}, ""
+                    {
+                        "x-ratelimit-reset-tokens": str(
+                            budget.get("token_reset") or ""
+                        )
+                    },
+                    "",
                 ),
             )
+
         return reservation_id
 
     @staticmethod
@@ -1113,18 +1219,42 @@ class QueryService:
         return json.dumps(compact, ensure_ascii=False, default=str)
 
     @staticmethod
-    def _answer_from_result(result: dict[str, Any]) -> str:
+    def _answer_from_result(
+        result: dict[str, Any],
+        question: str,
+    ) -> str:
         if result.get("operation") == "count":
             count = int(result.get("result", 0))
             distinct_column = result.get("distinct_column")
 
             if distinct_column:
-                return f"A consulta encontrou {count} valores únicos em '{distinct_column}'."
+                match = re.match(r"^(quantos|quantas)\s+(.+?)[?.!]*$", question.strip(), re.IGNORECASE)
 
-            return f"A consulta encontrou {count} registros."
+                if match:
+                    return f"{count} {match.group(2)}."
+
+                return f"Foram encontrados {count} resultados únicos."
+            return f"Foram encontrados {count} resultados."
 
         rows = result.get("result", [])
-        returned = int(result.get("returned_rows", len(rows)))
+
+        returned_rows = result.get("returned_rows")
+
+        if returned_rows is not None:
+            returned = int(returned_rows)
+        elif isinstance(rows, list):
+            returned = len(rows)
+        elif isinstance(rows, int):
+            returned = rows
+        else:
+            returned = 0
+
+        if returned_rows is not None:
+            returned = int(returned_rows)
+        elif isinstance(rows, list):
+            returned = len(rows)
+        else:
+            returned = 0
 
         if result.get("operation") == "aggregate" and rows:
             summary = QueryService._summarize_rows(rows)
@@ -1254,22 +1384,33 @@ class QueryService:
     def _result_as_data(result: dict[str, Any] | None) -> dict[str, Any] | None:
         if not result:
             return None
+
         operation = result.get("operation")
         value = result.get("result")
+
         if operation == "count":
-            return {"type": "count", "value": int(to_json_safe(value))}
+            return {
+                "type": "count",
+                "value": int(to_json_safe(value)),
+            }
+
         if isinstance(value, list):
             rows = to_json_safe(value)
+
             columns = []
             for row in rows:
                 for column in row:
                     if column not in columns:
                         columns.append(column)
+
             return {
-                "type": "table",
+                "type": "aggregate" if operation == "aggregate" else "table",
                 "columns": columns,
                 "rows": rows,
                 "truncated": bool(result.get("truncated", False)),
-                "returnedRows": int(result.get("returned_rows", len(rows))),
+                "returnedRows": int(
+                    result.get("returned_rows", len(rows))
+                ),
             }
+
         return None
