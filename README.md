@@ -199,7 +199,7 @@ Example using Gemini:
 ```env
 AI_PROVIDER=gemini
 GOOGLE_API_KEY=your_api_key
-GEMINI_MODEL=gemini-flash-latest
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 Optional Groq fallback:

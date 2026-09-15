@@ -10,7 +10,7 @@ AI_PROVIDER = (
     _CONFIGURED_AI_PROVIDER
     or ("gemini" if GOOGLE_API_KEY else "groq" if GROQ_API_KEY else "gemini")
 ).lower()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
 
