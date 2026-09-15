@@ -107,9 +107,54 @@ class DataManager:
                 "descriptions": descriptions,
                 "sample": metadata.get("sample", [])[:3],
                 "categorical_values": metadata.get("categorical_values", {}),
+                "relationships": self._relationship_candidates(dataset),
             }
 
         return context
+
+    def _relationship_candidates(self, dataset: str) -> list[dict]:
+        """Infer likely joins from value overlap, without domain-specific names."""
+        source = self.datasets[dataset]
+        candidates: list[tuple[float, dict]] = []
+
+        for other_name, target in self.datasets.items():
+            if other_name == dataset:
+                continue
+            for left_column in source.columns:
+                left = source[left_column].dropna().astype(str).head(5000)
+                left_values = set(left)
+                if not left_values:
+                    continue
+                left_unique_ratio = len(left_values) / len(left)
+
+                for right_column in target.columns:
+                    right = target[right_column].dropna().astype(str).head(5000)
+                    right_values = set(right)
+                    if not right_values:
+                        continue
+                    right_unique_ratio = len(right_values) / len(right)
+                    if max(left_unique_ratio, right_unique_ratio) < 0.8:
+                        continue
+
+                    overlap = len(left_values & right_values)
+                    coverage = overlap / min(len(left_values), len(right_values))
+                    if overlap < 2 or coverage < 0.5:
+                        continue
+
+                    candidates.append(
+                        (
+                            coverage,
+                            {
+                                "dataset": other_name,
+                                "left_column": left_column,
+                                "right_column": right_column,
+                                "overlap": round(coverage, 3),
+                            },
+                        )
+                    )
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return [candidate for _, candidate in candidates[:10]]
 
     def query(
         self,

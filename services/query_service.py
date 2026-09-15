@@ -74,9 +74,6 @@ class QueryService:
 
     def query(self, dataset_id: UUID, question: str) -> QueryResult:
         session = self.registry.get(dataset_id)
-        local_result = self._try_deterministic_query(session.manager, question)
-        if local_result is not None:
-            return local_result
         if not is_ai_configured():
             raise AIUnavailableError("O provedor de IA não está configurado")
 
@@ -84,6 +81,9 @@ class QueryService:
 
     def query_workspace(self, dataset_ids: list[UUID], question: str) -> QueryResult:
         """Executa uma query sobre múltiplos datasets agregados."""
+        if not is_ai_configured():
+            raise AIUnavailableError("O provedor de IA não está configurado")
+
         from pipeline.data_manager import DataManager
         import tempfile
         from pathlib import Path
@@ -108,135 +108,8 @@ class QueryService:
                 except Exception as e:
                     logger.warning(f"Falha ao carregar dataset {dataset_id}: {e}")
 
-            local_result = self._try_deterministic_query(aggregated_manager, question)
-            if local_result is not None:
-                return local_result
-            if not is_ai_configured():
-                raise AIUnavailableError("O provedor de IA não está configurado")
-
             # Executa a query com o DataManager agregado
             return self._execute_query(aggregated_manager, question, dataset_ids[0])
-
-    def _try_deterministic_query(self, manager: Any, question: str) -> QueryResult | None:
-        """Resolve intenções frequentes sem depender da disponibilidade do LLM."""
-        normalized = question.casefold().strip()
-        portuguese = any(
-            term in normalized
-            for term in ("quais", "quantos", "quantas", "condição", "condições", "paciente", "salário", "renda")
-        )
-        datasets = {name.casefold(): name for name in manager.datasets}
-        patients = datasets.get("patients")
-        conditions = datasets.get("conditions")
-        telemetry = {
-            "provider_calls": 0,
-            "tools_called": ["query_data"],
-            "status": "local_deterministic",
-        }
-
-        salary_terms = ("salary", "income", "wage", "salário", "salario", "renda")
-        if any(term in normalized for term in salary_terms):
-            available_columns = {
-                column.casefold()
-                for frame in manager.datasets.values()
-                for column in frame.columns
-            }
-            if not any(term in available_columns for term in salary_terms):
-                return QueryResult(
-                    answer=(
-                        "Os datasets carregados não possuem campos de salário ou renda, "
-                        "portanto essa média não pode ser calculada com os dados disponíveis."
-                        if portuguese
-                        else "The uploaded datasets do not contain a salary or income field, "
-                        "so this average cannot be calculated from the available data."
-                    ),
-                    data=None,
-                    telemetry=telemetry,
-                )
-
-        asks_female_diabetes = (
-            patients
-            and conditions
-            and ("female" in normalized or "mulher" in normalized or "femin" in normalized)
-            and "diabet" in normalized
-        )
-        if asks_female_diabetes:
-            result = manager.query(
-                operation="count",
-                dataset=patients,
-                filters=[
-                    {"column": "gender", "operator": "eq", "value": "F"},
-                    {"column": "description", "operator": "eq", "value": "Diabetes"},
-                ],
-                join_dataset=conditions,
-                join_left_on="id",
-                join_right_on="patient",
-                join_how="inner",
-                distinct_column="id",
-            )
-            count = int(result["result"])
-            return QueryResult(
-                answer=(
-                    f"Foram encontradas {count:,} pacientes únicas com o diagnóstico Diabetes."
-                    if portuguese
-                    else f"There are {count:,} unique female patients with Diabetes."
-                ),
-                data=self._result_as_data(result),
-                telemetry=telemetry,
-            )
-
-        condition_terms = ("condition", "condição", "condições", "condicao", "condicoes")
-        asks_condition_ranking = conditions and any(
-            term in normalized for term in condition_terms
-        ) and any(
-            term in normalized for term in ("frequent", "common", "top", "frequente", "comum")
-        )
-        if asks_condition_ranking:
-            limit_match = re.search(r"\b(\d{1,2})\b", normalized)
-            limit = min(int(limit_match.group(1)), 20) if limit_match else 5
-            result = manager.query(
-                operation="aggregate",
-                dataset=conditions,
-                group_by="description",
-                metric="description",
-                aggregation="count",
-                sort="description",
-                sort_direction="desc",
-                limit=limit,
-            )
-            rows = result["result"]
-            summary = "; ".join(
-                f"{index}. {row['description']} — {int(row['description_count']):,}"
-                for index, row in enumerate(rows, start=1)
-            )
-            return QueryResult(
-                answer=summary,
-                data=self._result_as_data(result),
-                telemetry=telemetry,
-            )
-
-        asks_patient_count = patients and any(
-            term in normalized for term in ("patient", "paciente")
-        ) and any(
-            term in normalized for term in ("how many", "count", "quantos", "quantas")
-        )
-        if asks_patient_count:
-            result = manager.query(
-                operation="count",
-                dataset=patients,
-                distinct_column="id",
-            )
-            count = int(result["result"])
-            return QueryResult(
-                answer=(
-                    f"Há {count:,} pacientes únicos no dataset."
-                    if portuguese
-                    else f"There are {count:,} unique patients in the dataset."
-                ),
-                data=self._result_as_data(result),
-                telemetry=telemetry,
-            )
-
-        return None
 
     def _execute_query(self, manager: Any, question: str, dataset_id: UUID) -> QueryResult:
         """Executa a query usando o DataManager fornecido."""
@@ -707,16 +580,6 @@ class QueryService:
                 sort_direction="desc" if plan.aggregation == "max" else "asc",
                 limit=1,
             )
-        asks_supplier = any(
-            term in normalized_question for term in ("fornecedor", "fornecedores")
-        )
-        asks_identifier = any(
-            term in normalized_question for term in ("cpf", "cnpj", "documento")
-        )
-        asks_product = "produto" in normalized_question
-        asks_product_identifier = any(
-            term in normalized_question for term in ("numero do produto", "número do produto", "codigo", "código")
-        )
         dataframe = getattr(manager, "datasets", {}).get(plan.dataset)
         columns = list(getattr(dataframe, "columns", []))
         if plan.join_dataset:
@@ -842,77 +705,6 @@ class QueryService:
                         update={"filter_column": readable_column}
                     )
 
-        asks_most_expensive = any(
-            term in normalized_question
-            for term in ("mais caro", "mais cara", "mais caros", "mais caras")
-        )
-
-        asks_total_cost = any(
-            term in normalized_question
-            for term in ("custo total", "preço total", "preco total", "valor total", "acumulado")
-        )
-
-        if (
-            asks_most_expensive
-            and not asks_total_cost
-            and plan.operation == "list"
-        ):
-            unit_cost_column = next(
-                (
-                    column
-                    for column in columns
-                    if column.lower() in {
-                        "base_cost",
-                        "unit_cost",
-                        "unit_price",
-                        "price",
-                        "preco_unitario",
-                        "preço_unitário",
-                    }
-                ),
-                None,
-            )
-
-            if unit_cost_column:
-                plan = plan.model_copy(
-                    update={
-                        "metric": unit_cost_column,
-                        "sort": unit_cost_column,
-                        "sort_direction": "desc",
-                    }
-                )
-
-        if not plan.group_by:
-            return plan
-
-        normalized_group = plan.group_by.lower()
-
-        if asks_supplier and not asks_identifier and (
-            "cpf" in normalized_group or "cnpj" in normalized_group
-        ):
-            readable_supplier = next(
-                (
-                    column
-                    for column in columns
-                    if "razao_social" in column.lower() and "emitente" in column.lower()
-                ),
-                None,
-            )
-            if readable_supplier:
-                return plan.model_copy(update={"group_by": readable_supplier})
-        if asks_product and not asks_product_identifier and (
-            "numero" in normalized_group or "codigo" in normalized_group
-        ):
-            readable_product = next(
-                (
-                    column
-                    for column in columns
-                    if "descricao" in column.lower() and "produto" in column.lower()
-                ),
-                None,
-            )
-            if readable_product:
-                return plan.model_copy(update={"group_by": readable_product})
         return plan
 
     def _log_local_block(self, query_id: str, provider: str) -> None:
@@ -1061,12 +853,15 @@ class QueryService:
 
         dataset_summary = ""
         if planner_context:
-            dataset_names = ", ".join(sorted(planner_context.keys()))
+            context = json.dumps(
+                planner_context, ensure_ascii=False, separators=(",", ":")
+            )
             dataset_summary = (
-                "Você deve considerar todos os datasets carregados nesta sessão: "
-                f"{dataset_names}. "
-                "Use os nomes exatos e as colunas disponíveis para responder, "
-                "sem inventar dados."
+                "Metadados descobertos automaticamente nos ficheiros carregados "
+                "(incluindo relações prováveis inferidas por sobreposição de valores):\n"
+                f"{context}\n"
+                "Use somente estes nomes, colunas, valores e relações. Relações são "
+                "candidatas e devem ser usadas apenas quando forem relevantes à pergunta."
             )
 
         prompt = f"{SYSTEM_PROMPT}\n\n{dataset_summary}".strip()

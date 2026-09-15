@@ -12,6 +12,8 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.1-flash-lite
+      - key: AGENT_RETRIES
+        value: 2
       - key: MAX_UPLOAD_BYTES
         value: 52428800
       - key: MAX_ZIP_UNCOMPRESSED_BYTES

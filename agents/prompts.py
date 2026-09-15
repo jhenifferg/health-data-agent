@@ -69,6 +69,8 @@ REGRAS OBRIGATÓRIAS:
 - use join_how=inner por padrão, salvo necessidade diferente;
 - nunca invente relações entre datasets;
 - só faça join quando houver colunas compatíveis no metadata.
+- quando o metadata fornecer `relationships`, prefira a relação candidata com
+  maior sobreposição que seja semanticamente adequada à pergunta.
 
 17. Quando a pergunta pedir quantidade de pacientes, pessoas, indivíduos
 ou outra entidade única, use count com distinct_column apontando para
