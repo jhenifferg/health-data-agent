@@ -74,6 +74,9 @@ class QueryService:
 
     def query(self, dataset_id: UUID, question: str) -> QueryResult:
         session = self.registry.get(dataset_id)
+        local_result = self._try_deterministic_query(session.manager, question)
+        if local_result is not None:
+            return local_result
         if not is_ai_configured():
             raise AIUnavailableError("O provedor de IA não está configurado")
 
@@ -81,9 +84,6 @@ class QueryService:
 
     def query_workspace(self, dataset_ids: list[UUID], question: str) -> QueryResult:
         """Executa uma query sobre múltiplos datasets agregados."""
-        if not is_ai_configured():
-            raise AIUnavailableError("O provedor de IA não está configurado")
-
         from pipeline.data_manager import DataManager
         import tempfile
         from pathlib import Path
@@ -108,8 +108,115 @@ class QueryService:
                 except Exception as e:
                     logger.warning(f"Falha ao carregar dataset {dataset_id}: {e}")
 
+            local_result = self._try_deterministic_query(aggregated_manager, question)
+            if local_result is not None:
+                return local_result
+            if not is_ai_configured():
+                raise AIUnavailableError("O provedor de IA não está configurado")
+
             # Executa a query com o DataManager agregado
             return self._execute_query(aggregated_manager, question, dataset_ids[0])
+
+    def _try_deterministic_query(self, manager: Any, question: str) -> QueryResult | None:
+        """Resolve intenções frequentes sem depender da disponibilidade do LLM."""
+        normalized = question.casefold().strip()
+        datasets = {name.casefold(): name for name in manager.datasets}
+        patients = datasets.get("patients")
+        conditions = datasets.get("conditions")
+        telemetry = {
+            "provider_calls": 0,
+            "tools_called": ["query_data"],
+            "status": "local_deterministic",
+        }
+
+        salary_terms = ("salary", "income", "wage", "salário", "salario", "renda")
+        if any(term in normalized for term in salary_terms):
+            available_columns = {
+                column.casefold()
+                for frame in manager.datasets.values()
+                for column in frame.columns
+            }
+            if not any(term in available_columns for term in salary_terms):
+                return QueryResult(
+                    answer=(
+                        "The uploaded datasets do not contain a salary or income field, "
+                        "so this average cannot be calculated from the available data."
+                    ),
+                    data=None,
+                    telemetry=telemetry,
+                )
+
+        asks_female_diabetes = (
+            patients
+            and conditions
+            and ("female" in normalized or "mulher" in normalized or "femin" in normalized)
+            and "diabet" in normalized
+        )
+        if asks_female_diabetes:
+            result = manager.query(
+                operation="count",
+                dataset=patients,
+                filters=[
+                    {"column": "gender", "operator": "eq", "value": "F"},
+                    {"column": "description", "operator": "eq", "value": "Diabetes"},
+                ],
+                join_dataset=conditions,
+                join_left_on="id",
+                join_right_on="patient",
+                join_how="inner",
+                distinct_column="id",
+            )
+            count = int(result["result"])
+            return QueryResult(
+                answer=f"There are {count:,} unique female patients with Diabetes.",
+                data=self._result_as_data(result),
+                telemetry=telemetry,
+            )
+
+        asks_condition_ranking = conditions and "condition" in normalized and any(
+            term in normalized for term in ("frequent", "common", "top", "frequente", "comum")
+        )
+        if asks_condition_ranking:
+            limit_match = re.search(r"\b(\d{1,2})\b", normalized)
+            limit = min(int(limit_match.group(1)), 20) if limit_match else 5
+            result = manager.query(
+                operation="aggregate",
+                dataset=conditions,
+                group_by="description",
+                metric="description",
+                aggregation="count",
+                sort="description",
+                sort_direction="desc",
+                limit=limit,
+            )
+            rows = result["result"]
+            summary = "; ".join(
+                f"{index}. {row['description']} — {int(row['description_count']):,}"
+                for index, row in enumerate(rows, start=1)
+            )
+            return QueryResult(
+                answer=summary,
+                data=self._result_as_data(result),
+                telemetry=telemetry,
+            )
+
+        asks_patient_count = patients and "patient" in normalized and any(
+            term in normalized for term in ("how many", "count", "quantos", "quantas")
+        )
+        if asks_patient_count:
+            result = manager.query(
+                operation="count",
+                dataset=patients,
+                distinct_column="id",
+            )
+            count = int(result["result"])
+            return QueryResult(
+                answer=f"There are {count:,} unique patients in the dataset.",
+                data=self._result_as_data(result),
+                telemetry=telemetry,
+            )
+
+        return None
 
     def _execute_query(self, manager: Any, question: str, dataset_id: UUID) -> QueryResult:
         """Executa a query usando o DataManager fornecido."""

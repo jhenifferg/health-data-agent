@@ -1,4 +1,5 @@
 from pipeline.data_manager import DataManager
+from services.query_service import QueryService
 
 
 DATA_DIR = (
@@ -47,3 +48,34 @@ def test_most_frequent_condition_by_occurrences():
 
     assert row["description"] == "Viral sinusitis (disorder)"
     assert row["description_count"] == 1248
+
+
+def test_common_health_questions_are_deterministic():
+    manager = DataManager(data_dir=DATA_DIR)
+    manager.load()
+    service = QueryService.__new__(QueryService)
+
+    patients = service._try_deterministic_query(
+        manager, "How many patients are in the dataset?"
+    )
+    conditions = service._try_deterministic_query(
+        manager, "What are the 5 most frequent conditions?"
+    )
+    female_diabetes = service._try_deterministic_query(
+        manager, "How many female patients have diabetes?"
+    )
+    salary = service._try_deterministic_query(
+        manager, "What is the average salary of the patients?"
+    )
+
+    assert patients.data == {"type": "count", "value": 1171}
+    assert [row["description_count"] for row in conditions.data["rows"]] == [
+        1248,
+        653,
+        563,
+        516,
+        449,
+    ]
+    assert female_diabetes.data == {"type": "count", "value": 32}
+    assert salary.data is None
+    assert "do not contain a salary or income field" in salary.answer
