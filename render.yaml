@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: health-data-agent
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: AI_PROVIDER
+        value: gemini
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+      - key: MAX_UPLOAD_BYTES
+        value: 52428800
+      - key: MAX_ZIP_UNCOMPRESSED_BYTES
+        value: 104857600

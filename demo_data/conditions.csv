@@ -1,0 +1,16 @@
+condition_id,patient,description,onset_date,status
+C001,P001,Type 2 diabetes mellitus,2021-03-10,active
+C002,P001,Hypertension,2022-08-15,active
+C003,P002,Hypertension,2020-02-12,active
+C004,P003,Asthma,2018-06-01,active
+C005,P004,Type 2 diabetes mellitus,2019-11-20,active
+C006,P005,Type 2 diabetes mellitus,2017-04-08,active
+C007,P005,Hypertension,2016-09-14,active
+C008,P006,Allergic rhinitis,2023-05-02,active
+C009,P007,Type 2 diabetes mellitus,2020-01-18,active
+C010,P007,Hypertension,2021-07-23,active
+C011,P008,Asthma,2014-10-11,active
+C012,P009,Migraine,2019-03-07,active
+C013,P010,Hypertension,2015-12-19,active
+C014,P011,Asthma,2022-02-03,active
+C015,P012,Hyperlipidemia,2020-06-28,active

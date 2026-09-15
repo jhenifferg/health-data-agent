@@ -38,6 +38,8 @@ The system therefore does not act as a diagnostic model and does not rely on bui
 - Provider timeout, rate-limit and cooldown handling
 - FastAPI REST API
 - React web interface
+- One-click synthetic healthcare demo
+- Single-service deployment with the React frontend served by FastAPI
 
 ## Architecture
 
@@ -228,6 +230,24 @@ npm run dev
 ```
 
 The development interface runs locally on port `5173`.
+
+### Integrated production build
+
+Build the frontend and start the full application from a single server:
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+python app.py
+```
+
+Open `http://localhost:8000`. FastAPI serves both the API and the compiled React interface on the same domain.
+
+The repository also includes a `Dockerfile` and `render.yaml` for a single-service deployment. Configure `GOOGLE_API_KEY` as a secret in the hosting environment before deploying.
+
+The built-in demo uses synthetic records from `demo_data/`; no external dataset is required to evaluate the main workflow.
 
 ## API
 

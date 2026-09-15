@@ -1,9 +1,11 @@
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from api.routes.datasets import router as datasets_router
 from api.routes.health import router as health_router
@@ -84,6 +86,10 @@ def create_app(runtime_root: str | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(datasets_router)
     app.include_router(workspace_router)
+
+    frontend_dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
     return app
 
 

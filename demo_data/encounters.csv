@@ -1,0 +1,14 @@
+encounter_id,patient,date,type,organization
+E001,P001,2025-01-12,ambulatory,Central Clinic
+E002,P001,2025-05-03,follow-up,Central Clinic
+E003,P002,2025-02-21,emergency,North Hospital
+E004,P003,2025-03-10,ambulatory,Community Health Center
+E005,P004,2025-01-28,inpatient,Central Clinic
+E006,P005,2025-04-14,follow-up,Central Clinic
+E007,P006,2025-06-09,ambulatory,South Clinic
+E008,P007,2025-02-06,follow-up,North Hospital
+E009,P008,2025-07-18,emergency,Community Health Center
+E010,P009,2025-03-30,ambulatory,Central Clinic
+E011,P010,2025-05-25,inpatient,North Hospital
+E012,P011,2025-06-11,ambulatory,South Clinic
+E013,P012,2025-04-02,follow-up,Central Clinic

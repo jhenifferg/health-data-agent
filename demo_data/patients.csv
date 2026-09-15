@@ -1,0 +1,13 @@
+id,first_name,last_name,gender,birth_date,city
+P001,Ana,Silva,F,1984-03-12,Porto
+P002,Bruno,Costa,M,1976-11-04,Lisboa
+P003,Carla,Santos,F,1991-07-22,Braga
+P004,Daniel,Rocha,M,1968-01-30,Coimbra
+P005,Elisa,Mendes,F,1959-09-17,Lisboa
+P006,Fabio,Lima,M,1988-05-09,Faro
+P007,Gabriela,Nunes,F,1973-12-01,Porto
+P008,Hugo,Pereira,M,1995-06-14,Aveiro
+P009,Ines,Almeida,F,1981-02-26,Coimbra
+P010,Joao,Martins,M,1964-08-08,Braga
+P011,Luisa,Ferreira,F,1990-10-19,Lisboa
+P012,Miguel,Correia,M,1979-04-03,Porto
