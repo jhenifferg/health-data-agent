@@ -120,6 +120,10 @@ class QueryService:
     def _try_deterministic_query(self, manager: Any, question: str) -> QueryResult | None:
         """Resolve intenções frequentes sem depender da disponibilidade do LLM."""
         normalized = question.casefold().strip()
+        portuguese = any(
+            term in normalized
+            for term in ("quais", "quantos", "quantas", "condição", "condições", "paciente", "salário", "renda")
+        )
         datasets = {name.casefold(): name for name in manager.datasets}
         patients = datasets.get("patients")
         conditions = datasets.get("conditions")
@@ -139,7 +143,10 @@ class QueryService:
             if not any(term in available_columns for term in salary_terms):
                 return QueryResult(
                     answer=(
-                        "The uploaded datasets do not contain a salary or income field, "
+                        "Os datasets carregados não possuem campos de salário ou renda, "
+                        "portanto essa média não pode ser calculada com os dados disponíveis."
+                        if portuguese
+                        else "The uploaded datasets do not contain a salary or income field, "
                         "so this average cannot be calculated from the available data."
                     ),
                     data=None,
@@ -168,12 +175,19 @@ class QueryService:
             )
             count = int(result["result"])
             return QueryResult(
-                answer=f"There are {count:,} unique female patients with Diabetes.",
+                answer=(
+                    f"Foram encontradas {count:,} pacientes únicas com o diagnóstico Diabetes."
+                    if portuguese
+                    else f"There are {count:,} unique female patients with Diabetes."
+                ),
                 data=self._result_as_data(result),
                 telemetry=telemetry,
             )
 
-        asks_condition_ranking = conditions and "condition" in normalized and any(
+        condition_terms = ("condition", "condição", "condições", "condicao", "condicoes")
+        asks_condition_ranking = conditions and any(
+            term in normalized for term in condition_terms
+        ) and any(
             term in normalized for term in ("frequent", "common", "top", "frequente", "comum")
         )
         if asks_condition_ranking:
@@ -200,7 +214,9 @@ class QueryService:
                 telemetry=telemetry,
             )
 
-        asks_patient_count = patients and "patient" in normalized and any(
+        asks_patient_count = patients and any(
+            term in normalized for term in ("patient", "paciente")
+        ) and any(
             term in normalized for term in ("how many", "count", "quantos", "quantas")
         )
         if asks_patient_count:
@@ -211,7 +227,11 @@ class QueryService:
             )
             count = int(result["result"])
             return QueryResult(
-                answer=f"There are {count:,} unique patients in the dataset.",
+                answer=(
+                    f"Há {count:,} pacientes únicos no dataset."
+                    if portuguese
+                    else f"There are {count:,} unique patients in the dataset."
+                ),
                 data=self._result_as_data(result),
                 telemetry=telemetry,
             )

@@ -61,6 +61,9 @@ def test_common_health_questions_are_deterministic():
     conditions = service._try_deterministic_query(
         manager, "What are the 5 most frequent conditions?"
     )
+    conditions_pt = service._try_deterministic_query(
+        manager, "quais são as 5 condições mais frequentes?"
+    )
     female_diabetes = service._try_deterministic_query(
         manager, "How many female patients have diabetes?"
     )
@@ -76,6 +79,7 @@ def test_common_health_questions_are_deterministic():
         516,
         449,
     ]
+    assert conditions_pt.data == conditions.data
     assert female_diabetes.data == {"type": "count", "value": 32}
     assert salary.data is None
     assert "do not contain a salary or income field" in salary.answer
