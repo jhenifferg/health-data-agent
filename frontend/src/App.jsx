@@ -9,6 +9,20 @@ const prompts = [
   'How many female patients have diabetes?',
 ]
 
+async function apiResponse(response) {
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) return response.json()
+  const body = await response.text()
+  if (!response.ok) {
+    throw new Error(
+      response.status >= 500
+        ? 'The server stopped while processing the request. Please try again; if it repeats, use a smaller file.'
+        : 'The server returned an unexpected response.'
+    )
+  }
+  throw new Error(body ? 'The server returned an unexpected response.' : 'The server returned an empty response.')
+}
+
 function Icon({ name, size = 19 }) {
   const paths = {
     upload: <><path d="M12 16V4m0 0L7 9m5-5 5 5M5 20h14" /></>,
@@ -55,7 +69,7 @@ export default function App() {
     const body = new FormData(); body.append('file', selected)
     try {
       const response = await fetch(`${API}/api/datasets`, { method: 'POST', body })
-      const data = await response.json()
+      const data = await apiResponse(response)
       if (!response.ok) throw new Error(data?.error?.message || 'The dataset could not be processed.')
       setFile(selected); setDataset(data); setAnswer(null)
     } catch (err) { setError(err.message) } finally { setBusy('') }
@@ -77,7 +91,7 @@ export default function App() {
     setQuestion(prompt); setBusy('ask'); setError(''); setAnswer(null)
     try {
       const response = await fetch(`${API}/api/datasets/${dataset.datasetId}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: prompt }) })
-      const data = await response.json()
+      const data = await apiResponse(response)
       if (!response.ok) throw new Error(response.status === 429 ? 'The AI service is busy. Please try again shortly.' : data?.error?.message || 'The question could not be analyzed.')
       setAnswer(data)
     } catch (err) { setError(err.message) } finally { setBusy('') }

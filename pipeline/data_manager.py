@@ -486,14 +486,14 @@ class DataManager:
             if group_by:
                 if aggregation == "count" and distinct_column:
                     grouped = (
-                        df.groupby(group_by, dropna=False)["_metric"]
+                        df.groupby(group_by, dropna=False, observed=True)["_metric"]
                         .nunique()
                         .reset_index()
                         .rename(columns={"_metric": metric})
                     )
                 else:
                     grouped = (
-                        df.groupby(group_by, dropna=False)["_metric"]
+                        df.groupby(group_by, dropna=False, observed=True)["_metric"]
                         .agg(aggregation)
                         .reset_index()
                         .rename(columns={"_metric": metric})

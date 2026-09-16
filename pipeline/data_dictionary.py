@@ -22,6 +22,7 @@ class DataDictionary:
                 if (
                     pd.api.types.is_object_dtype(df[column])
                     or pd.api.types.is_string_dtype(df[column])
+                    or isinstance(df[column].dtype, pd.CategoricalDtype)
                 ):
                     unique_values = df[column].dropna().astype(str).unique()
 

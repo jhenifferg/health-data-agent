@@ -68,6 +68,15 @@ class CSVTools:
                 .str.strip()
             )
 
+            # Repeated textual values are stored as category codes. This keeps
+            # large, arbitrary CSV collections within the memory available to
+            # the hosted demo without changing their visible values.
+            non_null_count = int(df[col].notna().sum())
+            if non_null_count >= 100:
+                unique_count = int(df[col].nunique(dropna=True))
+                if unique_count <= 50_000 and unique_count / non_null_count <= 0.5:
+                    df[col] = df[col].astype("category")
+
         return df
 
     @classmethod
